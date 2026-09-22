@@ -1,80 +1,224 @@
 name: build-easytier-android-jni
 
+# 在 GitHub Actions 的 Ubuntu 环境中交叉编译
+# EasyTier Android JNI 动态库：
+# libeasytier_android_jni.so
+#
+# 输出架构：
+# aarch64-linux-android
+# Android ABI：
+# arm64-v8a
+
 on:
   workflow_dispatch:
+
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Free up some disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo rm -rf \
+            /usr/share/dotnet \
+            /opt/ghc \
+            /usr/local/share/boost \
+            "$AGENT_TOOLSDIRECTORY" || true
+
           df -h /
 
-      - name: Checkout EasyTier (shallow)
-        run: git clone --depth 1 https://github.com/EasyTier/EasyTier.git src
+      - name: Checkout EasyTier
+        run: |
+          git clone \
+            --depth 1 \
+            https://github.com/EasyTier/EasyTier.git \
+            src
 
-      - uses: actions/setup-java@v4
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      - name: Setup Android SDK and NDK
+        uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: '12.0'
-          packages: 'build-tools;34.0.0 ndk;26.0.10792818 platform-tools platforms;android-34'
+          packages: |
+            build-tools;34.0.0
+            ndk;26.0.10792818
+            platform-tools
+            platforms;android-34
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-          targets: aarch64-linux-android
+      - name: Check Android NDK
+        run: |
+          set -euxo pipefail
 
-      - name: Show toolchain versions
+          export NDK="$ANDROID_HOME/ndk/26.0.10792818"
+          export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+
+          test -d "$NDK"
+          test -x "$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          test -x "$TOOLCHAIN/bin/llvm-ar"
+          test -x "$TOOLCHAIN/bin/llvm-strip"
+          test -x "$TOOLCHAIN/bin/llvm-nm"
+
+          "$TOOLCHAIN/bin/aarch64-linux-android24-clang" --version
+
+      - name: Install Rust 1.95 toolchain
+        run: |
+          set -euxo pipefail
+
+          rustup toolchain install 1.95.0 --profile minimal
+          rustup target add \
+            aarch64-linux-android \
+            --toolchain 1.95.0
+
+      - name: Verify Rust toolchain and Android target
         working-directory: src
+        env:
+          RUSTUP_TOOLCHAIN: 1.95.0
         run: |
-          rustup show active-toolchain
-          cargo --version
-          rustc --version
-          rustup target list --installed
+          set -euxo pipefail
 
-      - name: Install protoc (protobuf-compiler)
+          echo "Active Rust toolchain:"
+          rustup show active-toolchain
+
+          echo
+          echo "Rust version:"
+          rustc --version
+          cargo --version
+
+          echo
+          echo "Rust target list:"
+          rustup target list --installed --toolchain 1.95.0
+
+          echo
+          echo "Rust compiler details:"
+          rustc -vV
+
+          echo
+          echo "Cargo compiler details:"
+          cargo -vV
+
+          echo
+          echo "Rust toolchain path:"
+          TOOLCHAIN_PATH="$(rustup toolchain path 1.95.0)"
+          echo "$TOOLCHAIN_PATH"
+
+          echo
+          echo "Checking libcore for aarch64-linux-android:"
+          CORE_FILE="$(
+            find \
+              "$TOOLCHAIN_PATH/lib/rustlib/aarch64-linux-android/lib" \
+              -maxdepth 1 \
+              -type f \
+              -name 'libcore-*.rlib' \
+              -print \
+              -quit
+          )"
+
+          test -n "$CORE_FILE"
+          test -f "$CORE_FILE"
+          echo "$CORE_FILE"
+
+      - name: Install protoc
         run: |
+          set -euxo pipefail
+
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
+
           protoc --version
 
       - name: Cross-compile the JNI library
         working-directory: src
+        env:
+          RUSTUP_TOOLCHAIN: 1.95.0
         run: |
-          set -euo pipefail
+          set -euxo pipefail
+
           export NDK="$ANDROID_HOME/ndk/26.0.10792818"
           export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+
           export PATH="$TOOLCHAIN/bin:$PATH"
+
           export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
           export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
+
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
-          cargo build --release -p easytier-android-jni --target aarch64-linux-android
+
+          echo "Compiler:"
+          rustc -vV
+
+          echo
+          echo "Installed targets:"
+          rustup target list --installed --toolchain 1.95.0
+
+          echo
+          echo "Android linker:"
+          "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER" --version
+
+          echo
+          echo "Building JNI library..."
+
+          cargo build \
+            --release \
+            -p easytier-android-jni \
+            --target aarch64-linux-android
+
+      - name: Check generated library
+        working-directory: src
+        run: |
+          set -euxo pipefail
+
+          LIBRARY="target/aarch64-linux-android/release/libeasytier_android_jni.so"
+
+          test -f "$LIBRARY"
+          file "$LIBRARY"
+          ls -lh "$LIBRARY"
 
       - name: Strip the library
         working-directory: src
         run: |
-          STRIP="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
-          "$STRIP" target/aarch64-linux-android/release/libeasytier_android_jni.so || true
-          ls -lh target/aarch64-linux-android/release/libeasytier_android_jni.so
+          set -euxo pipefail
 
-      - name: Check the JNI symbols we depend on
+          STRIP="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          LIBRARY="target/aarch64-linux-android/release/libeasytier_android_jni.so"
+
+          "$STRIP" "$LIBRARY"
+
+          test -f "$LIBRARY"
+          ls -lh "$LIBRARY"
+
+      - name: Check JNI symbols
         working-directory: src
         run: |
-          NM="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
-          "$NM" -D --defined-only target/aarch64-linux-android/release/libeasytier_android_jni.so \
-            | grep -E "Java_com_easytier_jni_EasyTierJNI_(runNetworkInstance|setTunFd|parseConfig)" || \
-            (echo "JNI symbols not found - the Java class/package names must match exactly" && exit 1)
+          set -euxo pipefail
 
-      - uses: actions/upload-artifact@v4
+          NM="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          LIBRARY="target/aarch64-linux-android/release/libeasytier_android_jni.so"
+
+          "$NM" -D --defined-only "$LIBRARY" \
+            | tee /tmp/jni-symbols.txt
+
+          grep -E \
+            "Java_com_easytier_jni_EasyTierJNI_(runNetworkInstance|setTunFd|parseConfig)" \
+            /tmp/jni-symbols.txt
+
+      - name: Upload Android JNI library
+        uses: actions/upload-artifact@v4
         with:
           name: libeasytier_android_jni-arm64-v8a
           path: src/target/aarch64-linux-android/release/libeasytier_android_jni.so
-          if-no-files-found: error
+          if-no-fileschain`，避免 target 被安装到错误的 toolchain。
+- 明确安装 `1.95.0`。
+- 明确执行：
+
+  ```bash
+  rustup target add aarch64-linux-android --toolchain 1.95.0
