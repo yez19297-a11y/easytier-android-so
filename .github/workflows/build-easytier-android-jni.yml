@@ -1,15 +1,5 @@
 name: build-easytier-android-jni
 
-# 在 GitHub 的云端 Linux 机器上交叉编译安卓版 EasyTier 内核库（libeasytier_android_jni.so, arm64-v8a）。
-# 为什么不在 Windows 本机编：EasyTier 有 1100 多个依赖，其中 aws-lc-sys / openssl-sys 需要 cmake 与
-# 交叉编译好的 OpenSSL，Windows 上极难搞；官方 CI 本身就是在 ubuntu + NDK 上构建的，这里照抄它的环境。
-#
-# 怎么用（详见游戏工程 README 第 16 节 / files 里的《安卓内嵌内核-云端编译说明》）：
-#   1. 在 GitHub 上新建一个空仓库（Public 即可），把本文件放到 .github/workflows/ 下；
-#   2. 进仓库的 Actions 页，选 “build-easytier-android-jni”，点 “Run workflow”；
-#   3. 等 20~40 分钟，下载构建产物里的 libeasytier_android_jni.so；
-#   4. 把它放到游戏工程的 Assets/Plugins/Android/libs/arm64-v8a/ 下，重新打 APK 即可。
-
 on:
   workflow_dispatch:
   push:
@@ -37,11 +27,17 @@ jobs:
           cmdline-tools-version: '12.0'
           packages: 'build-tools;34.0.0 ndk;26.0.10792818 platform-tools platforms;android-34'
 
-     
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: aarch64-linux-android
 
       - name: Show toolchain versions
+        working-directory: src
         run: |
-          cargo --version && rustc --version
+          rustup show active-toolchain
+          cargo --version
+          rustc --version
           rustup target list --installed
 
       - name: Install protoc (protobuf-compiler)
@@ -49,13 +45,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y protobuf-compiler
           protoc --version
-
-     
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-        with:
-        targets: aarch64-linux-android
 
       - name: Cross-compile the JNI library
         working-directory: src
