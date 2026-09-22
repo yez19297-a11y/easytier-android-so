@@ -55,6 +55,12 @@ jobs:
       - name: Install aarch64-linux-android Rust target
         run: rustup target add aarch64-linux-android
 
+      - name: Install Rust Android target
+        run: rustup target add aarch64-linux-android
+
+      - name: Build
+        run: cargo build --release --target aarch64-linux-android
+
       - name: Cross-compile the JNI library
         working-directory: src
         run: |
