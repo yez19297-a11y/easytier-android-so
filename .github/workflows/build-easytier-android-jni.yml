@@ -1,4 +1,4 @@
-*name: build-easytier-android-jni
+name: build-easytier-android-jni
 
 # 在 GitHub Actions 的 Ubuntu 环境中交叉编译
 # EasyTier Android JNI 动态库：
