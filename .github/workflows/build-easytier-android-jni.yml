@@ -37,9 +37,7 @@ jobs:
           cmdline-tools-version: '12.0'
           packages: 'build-tools;34.0.0 ndk;26.0.10792818 platform-tools platforms;android-34'
 
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android
+     
 
       - name: Show toolchain versions
         run: |
@@ -52,8 +50,7 @@ jobs:
           sudo apt-get install -y protobuf-compiler
           protoc --version
 
-      - name: Install aarch64-linux-android Rust target
-        run: rustup target add aarch64-linux-android
+     
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
