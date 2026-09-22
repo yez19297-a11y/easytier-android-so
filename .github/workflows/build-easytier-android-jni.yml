@@ -1,0 +1,80 @@
+name: build-easytier-android-jni
+
+# 在 GitHub 的云端 Linux 机器上交叉编译安卓版 EasyTier 内核库（libeasytier_android_jni.so, arm64-v8a）。
+# 为什么不在 Windows 本机编：EasyTier 有 1100 多个依赖，其中 aws-lc-sys / openssl-sys 需要 cmake 与
+# 交叉编译好的 OpenSSL，Windows 上极难搞；官方 CI 本身就是在 ubuntu + NDK 上构建的，这里照抄它的环境。
+#
+# 怎么用（详见游戏工程 README 第 16 节 / files 里的《安卓内嵌内核-云端编译说明》）：
+#   1. 在 GitHub 上新建一个空仓库（Public 即可），把本文件放到 .github/workflows/ 下；
+#   2. 进仓库的 Actions 页，选 “build-easytier-android-jni”，点 “Run workflow”；
+#   3. 等 20~40 分钟，下载构建产物里的 libeasytier_android_jni.so；
+#   4. 把它放到游戏工程的 Assets/Plugins/Android/libs/arm64-v8a/ 下，重新打 APK 即可。
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free up some disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: Checkout EasyTier (shallow)
+        run: git clone --depth 1 https://github.com/EasyTier/EasyTier.git src
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '12.0'
+          packages: 'build-tools;34.0.0 ndk;26.0.10792818 platform-tools platforms;android-34'
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Show toolchain versions
+        run: |
+          cargo --version && rustc --version
+          ls "$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin" | head -20
+
+      - name: Cross-compile the JNI library
+        working-directory: src
+        run: |
+          set -euo pipefail
+          export NDK="$ANDROID_HOME/ndk/26.0.10792818"
+          export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$TOOLCHAIN/bin:$PATH"
+          export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          cargo build --release -p easytier-android-jni --target aarch64-linux-android
+
+      - name: Strip the library
+        working-directory: src
+        run: |
+          STRIP="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          "$STRIP" target/aarch64-linux-android/release/libeasytier_android_jni.so || true
+          ls -lh target/aarch64-linux-android/release/libeasytier_android_jni.so
+
+      - name: Check the JNI symbols we depend on
+        working-directory: src
+        run: |
+          NM="$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          "$NM" -D --defined-only target/aarch64-linux-android/release/libeasytier_android_jni.so \
+            | grep -E "Java_com_easytier_jni_EasyTierJNI_(runNetworkInstance|setTunFd|parseConfig)" || \
+            (echo "JNI symbols not found - the Java class/package names must match exactly" && exit 1)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libeasytier_android_jni-arm64-v8a
+          path: src/target/aarch64-linux-android/release/libeasytier_android_jni.so
+          if-no-files-found: error
