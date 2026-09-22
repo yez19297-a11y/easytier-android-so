@@ -44,20 +44,28 @@ jobs:
       - name: Show toolchain versions
         run: |
           cargo --version && rustc --version
-          ls "$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin" | head -20
+          rustup target list --installed
+
+      - name: Install protoc (protobuf-compiler)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          protoc --version
+
+      - name: Install aarch64-linux-android Rust target
+        run: rustup target add aarch64-linux-android
 
       - name: Cross-compile the JNI library
         working-directory: src
         run: |
-           set -euo pipefail
-           rustup target add aarch64-linux-android  # 确保目标已安装
-           export NDK="$ANDROID_HOME/ndk/26.0.10792818"
-           export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
-           export PATH="$TOOLCHAIN/bin:$PATH"
-           export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
-           export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
-           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
-           cargo build --release -p easytier-android-jni --target aarch64-linux-android
+          set -euo pipefail
+          export NDK="$ANDROID_HOME/ndk/26.0.10792818"
+          export TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          export PATH="$TOOLCHAIN/bin:$PATH"
+          export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android24-clang"
+          cargo build --release -p easytier-android-jni --target aarch64-linux-android
 
       - name: Strip the library
         working-directory: src
@@ -79,11 +87,3 @@ jobs:
           name: libeasytier_android_jni-arm64-v8a
           path: src/target/aarch64-linux-android/release/libeasytier_android_jni.so
           if-no-files-found: error
-      - name: Install protoc (protobuf-compiler)
-        run: |
-          sudo apt-get update
-           sudo apt-get install -y protobuf-compiler
-           protoc --version  # 验证安装，确认版本号输出
-
-      - name: Install aarch64-linux-android Rust target  # 如果之前没加，也一起加上
-        run: rustup target add aarch64-linux-android
