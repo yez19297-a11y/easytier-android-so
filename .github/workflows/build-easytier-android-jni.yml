@@ -104,14 +104,17 @@ jobs:
 
           echo
           echo "Rust toolchain path:"
-          TOOLCHAIN_PATH="$(rustup toolchain path 1.95.0)"
+           TOOLCHAIN_PATH="$(rustup run 1.95.0 rustc --print sysroot)"
           echo "$TOOLCHAIN_PATH"
 
           echo
           echo "Checking libcore for aarch64-linux-android:"
+          RUSTLIB_PATH="$TOOLCHAIN_PATH/lib/rustlib/aarch64-linux-android/lib"
+
+          test -d "$RUSTLIB_PATH"
+
           CORE_FILE="$(
-            find \
-              "$TOOLCHAIN_PATH/lib/rustlib/aarch64-linux-android/lib" \
+            find "$RUSTLIB_PATH" \
               -maxdepth 1 \
               -type f \
               -name 'libcore-*.rlib' \
