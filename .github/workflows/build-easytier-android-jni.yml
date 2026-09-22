@@ -104,7 +104,7 @@ jobs:
 
           echo
           echo "Rust toolchain path:"
-           TOOLCHAIN_PATH="$(rustup run 1.95.0 rustc --print sysroot)"
+          TOOLCHAIN_PATH="$(rustup run 1.95.0 rustc --print sysroot)"
           echo "$TOOLCHAIN_PATH"
 
           echo
