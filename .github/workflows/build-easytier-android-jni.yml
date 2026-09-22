@@ -79,3 +79,11 @@ jobs:
           name: libeasytier_android_jni-arm64-v8a
           path: src/target/aarch64-linux-android/release/libeasytier_android_jni.so
           if-no-files-found: error
+      - name: Install protoc (protobuf-compiler)
+        run: |
+          sudo apt-get update
+           sudo apt-get install -y protobuf-compiler
+           protoc --version  # 验证安装，确认版本号输出
+
+      - name: Install aarch64-linux-android Rust target  # 如果之前没加，也一起加上
+        run: rustup target add aarch64-linux-android
